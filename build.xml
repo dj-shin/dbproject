@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+
+<project name="SimpleDBMSParser">
+
+    <target name="compile" >
+        <mkdir dir="build/src"/>
+        <mkdir dir="build/classes"/>
+        <java classname="javacc" classpath="lib/javacc.jar">
+            <arg value="-OUTPUT_DIRECTORY=build/src"/>
+            <arg value="src/SimpleDBMSGrammar.jj"/>
+        </java>
+    </target>
+
+    <target name="build" depends="compile">
+        <javac srcdir="build" destdir="build/classes" />
+    </target>
+
+    <target name="run" depends="build">
+        <java classname="SimpleDBMSParser" classpath="build/classes"/>
+    </target>
+
+    <target name="clean" >
+        <delete dir="build"/>
+    </target>
+
+</project>
