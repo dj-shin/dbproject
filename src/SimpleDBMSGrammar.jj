@@ -1,3 +1,8 @@
+/**
+ * @file    SimpleDBMSGramar.jj
+ * @author  2014-18992 신동진
+ * @brief   Basic SQL grammar parser
+ */
 options {
   static = true;
   DEBUG_PARSER = false;
@@ -7,6 +12,7 @@ options {
 PARSER_BEGIN(SimpleDBMSParser)
 
 public class SimpleDBMSParser {
+  /// Type of SQL queries
   public static final int PRINT_SYNTAX_ERROR = 0;
   public static final int PRINT_CREATE_TABLE = 1;
   public static final int PRINT_DROP_TABLE =   2;
@@ -64,8 +70,7 @@ public class SimpleDBMSParser {
 
 PARSER_END(SimpleDBMSParser)
 
-SKIP : { <#TO_SKIP : " " | "\r" | "\t" | "\n" >
-| <WS : (<TO_SKIP>)+> }
+SKIP : { " " | "\r" | "\t" | "\n" }
 
 TOKEN : /* Keywords */ {
   < EXIT : "exit" >
@@ -95,15 +100,9 @@ TOKEN : /* Keywords */ {
 | < PRIMARY : "primary">
 | < CREATE : "create">
 | < FOREIGN : "foreign">
-| < CREATE_TABLE : <CREATE> <WS> <TABLE> <WS> >
-| < PRIMARY_KEY : <PRIMARY> <WS> <KEY>>
-| < FOREIGN_KEY : <FOREIGN> <WS> <KEY>>
-| < DROP_TABLE : <DROP> <WS> <TABLE> <WS> >
-| < SHOW_TABLES : <SHOW> <WS> <TABLES> <WS> >
-| < INSERT_INTO : <INSERT> <WS> <INTO> <WS> >
-| < DELETE_FROM : <DELETE> <WS> <FROM> <WS> >
 }
 
+/// Tokens that are not reserved keywords
 TOKEN : {
   < SEMICOLON : ";" >
 | < LEFT_PAREN : "(" >
@@ -125,23 +124,25 @@ TOKEN : {
 | < GT : ">">
 | < EQ : "=">
 | < NEQ : "!=">
-| < CHARSTRING : <QUOTE> (~["'"])* <QUOTE> >
+| < CHARSTRING : <QUOTE> (~["\'"])* <QUOTE> >
 | < LEGAL_IDENTIFIER : <ALPHABET> ( <ALPHABET> | <UNDERSCORE> )* >
 }
 
 void command() : {} {
   queryList()
-| ( < EXIT > < SEMICOLON > { System.exit(0); } )
+| ( <EXIT> <SEMICOLON> { System.exit(0); } )
 }
 
 void queryList() : { int q; } {
   (
     q = query()
-    < SEMICOLON >
+    <SEMICOLON>
     { printMessage(q); }
   )+
 }
 
+/// @brief  Parse query and return its type
+/// @param  int q Result query code
 int query() : { int q; } {
   (
     createTableQuery() { q = PRINT_CREATE_TABLE; }
@@ -150,166 +151,218 @@ int query() : { int q; } {
     | selectQuery() { q = PRINT_SELECT; }
     | insertQuery() { q = PRINT_INSERT; }
     | deleteQuery() { q = PRINT_DELETE; }
-    | <SHOW_TABLES> { q = PRINT_SHOW_TABLES; }
+    // "show tables" Query
+    | <SHOW> <TABLES> { q = PRINT_SHOW_TABLES; }
   )
   (
     { return q; }
   )
 }
 
+/// @brief  Parse "create table <table_name> (<table element list>)" form
 void createTableQuery() : {} {
-  < CREATE_TABLE > tableName() tableElementList()
+  <CREATE> <TABLE> tableName() tableElementList()
 }
 
+/// @brief  Parse "( <table element list> )" format
 void tableElementList() : {} {
-  < LEFT_PAREN > tableElement() ( < COMMA > tableElement() )* < RIGHT_PAREN >
+  <LEFT_PAREN> tableElement() ( <COMMA> tableElement() )* <RIGHT_PAREN>
 }
 
+/// @brief  Parse <table element> format
 void tableElement() : {} {
   columnDefinition()
 | tableConstraintDefinition()
 }
 
+/// @brief  Parse "<column_name> <data type> [not null]" format
 void columnDefinition() : {} {
   columnName() dataType() ( notNull() )?
 }
 
+/// @brief  Parse "[not] null" format
 void notNull() : {} {
-    <NOT> <NULL>
+  <NOT> <NULL>
 }
 
+/// @brief  Parse primary key or foreign key constraint formats
 void tableConstraintDefinition() : {} {
   primaryKeyConstraint()
 | referentialConstraint()
 }
 
+/// @brief  Parse "primary key(...)" format
 void primaryKeyConstraint() : {} {
-  < PRIMARY_KEY > columnNameList()
+  <PRIMARY> <KEY> columnNameList()
 }
 
+/// @brief  Parse "foreign key(...)" format
 void referentialConstraint() : {} {
-  < FOREIGN_KEY > columnNameList() < REFERENCES > tableName() columnNameList()
+  <FOREIGN> <KEY> columnNameList() <REFERENCES> tableName() columnNameList()
 }
 
+/// @brief  Parse "(<columnName>, ...)" format
 void columnNameList() : {} {
   <LEFT_PAREN> columnName() ( <COMMA> columnName() )* <RIGHT_PAREN>
 }
 
+/// @brief  Parse integer / char(size) / date value format
 void dataType() : {} {
   <INT>
 | ( <CHAR> <LEFT_PAREN> intValue() <RIGHT_PAREN> )
 | <DATE>
 }
 
+/// @brief  Parse table name
 void tableName() : {} {
   <LEGAL_IDENTIFIER>
 }
 
+/// @brief  Parse column name
 void columnName() : {} {
   <LEGAL_IDENTIFIER>
 }
 
+/// @brief  Parse integer value
 void intValue() : {} {
   ( <SIGN> )? ( <DIGIT> )+
 }
 
+/// @brief  Parse "drop table <tableName>" format
 void dropTable() : {} {
-    <DROP_TABLE> tableName()
+  <DROP> <TABLE> tableName()
 }
 
+/// @brief  Parse "desc <tableName>" format
 void descQuery() : {} {
-    <DESC> tableName()
+  <DESC> tableName()
 }
 
+/// @brief  Parse "select ..." format
 void selectQuery() : {} {
-    <SELECT> selectList() tableExp()
+  <SELECT> selectList() tableExp()
 }
 
+/// @brief Parse select list
+/// '*' or list of selected columns
 void selectList() : {} {
-    <ASTERISK> | selectedColumn() ( <COMMA> selectedColumn() )*
+  <ASTERISK> | selectedColumn() ( <COMMA> selectedColumn() )*
 }
 
+/// @brief Parse selected column
+/// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
+/// determine first token will be used as tableName (if 2nd token is ".") or columnName
 void selectedColumn() : {} {
-    (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) ( <AS> columnName() ) ?
+  (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) ( <AS> columnName() ) ?
 }
 
+/// @brief Parse "from ... [where ...]" format
 void tableExp() : {} {
-    fromClause() ( whereClause() ) ?
+  fromClause() ( whereClause() ) ?
 }
 
+/// @brief Parse from clause
 void fromClause() : {} {
-    <FROM> tableReferenceList()
+  <FROM> tableReferenceList()
 }
 
+/// @brief Parse table reference list
 void tableReferenceList() : {} {
-    referedTable() (<COMMA> referedTable()) *
+  referedTable() (<COMMA> referedTable()) *
 }
 
+/// @brief Parse "<tableName> [as <tableName>]" format
 void referedTable() : {} {
-    tableName() (<AS> tableName()) ?
+  tableName() (<AS> tableName()) ?
 }
 
+/// @brief Parse "where <predicate>" format
 void whereClause() : {} {
-    <WHERE> booleanValueExp()
+  <WHERE> booleanValueExp()
 }
 
+/// Collecting order of "or" "and" "not" affects operator precedence
+/// "not" should be collected first, then "and" and finally "or"
+
+/// @brief Collect "or" connected terms
 void booleanValueExp() : {} {
-    booleanTerm() ( <OR> booleanValueExp() ) ?
+  booleanTerm() ( <OR> booleanValueExp() ) ?
 }
 
+/// @brief Collect "and" connected terms
 void booleanTerm() : {} {
-    booleanFactor() ( <AND> booleanTerm() ) ?
+  booleanFactor() ( <AND> booleanTerm() ) ?
 }
 
+/// @brief Collect "not" connected terms
 void booleanFactor() : {} {
-    (<NOT>) ? booleanTest()
+  (<NOT>) ? booleanTest()
 }
 
+/// @brief  Parse expression which returns boolean value
 void booleanTest() : {} {
-    predicate() | parenthesizedBooleanExp()
+  predicate() | parenthesizedBooleanExp()
 }
 
+/// @brief  Parse "( <boolean expression> )" format
 void parenthesizedBooleanExp() : {} {
-    <LEFT_PAREN> booleanValueExp() <RIGHT_PAREN>
+  <LEFT_PAREN> booleanValueExp() <RIGHT_PAREN>
 }
 
+/// @brief  Parse predicate statement
+/// Lookahead of 4 tokens is required because longest command prefix for comparison predicate and null predicate
+/// is <tableName> "." <columnName>. (4th token will be "is" or comparison operator, then we can determine)
 void predicate() : {} {
-    LOOKAHEAD(2) comparisonPredicate() | nullPredicate()
+  LOOKAHEAD(4) comparisonPredicate() | nullPredicate()
 }
 
+/// @brief  Parse comparison predicate
 void comparisonPredicate() : {} {
-    compOperand() compOp() compOperand()
+  compOperand() compOp() compOperand()
 }
 
+/// @brief Parse comparison operand
+/// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
+/// determine first token will be used as tableName (if 2nd token is ".") or columnName
 void compOperand() : {} {
-    comparableValue() | (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() )
+  comparableValue()
+| (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() )
 }
 
+/// @brief Parse comparison operators
 void compOp() : {} {
-    <LEQ> | <GEQ> | <LT> | <GT> | <EQ> | <NEQ>
+  <LEQ> | <GEQ> | <LT> | <GT> | <EQ> | <NEQ>
 }
 
+/// @brief Parse comparable values
 void comparableValue() : {} {
-    intValue() | <CHARSTRING> | <DATE_VALUE>
+  intValue() | <CHARSTRING> | <DATE_VALUE>
 }
 
+/// @brief Parse null predicate
+/// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
+/// determine first token will be used as tableName (if 2nd token is ".") or columnName
 void nullPredicate() : {} {
-    (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) nullOperation()
+  (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) nullOperation()
 }
 
+/// @brief Parse null operation
 void nullOperation() : {} {
-    <IS> (<NOT>) ? <NULL>
+  <IS> (<NOT>) ? <NULL>
 }
 
+/// @brief Parse "delete from <tableName> [where ...]" format
 void deleteQuery() : {} {
-    <DELETE_FROM> tableName() ( whereClause() ) ?
+  <DELETE> <FROM> tableName() ( whereClause() ) ?
 }
 
+/// @brief Parse "insert into ..." format
 void insertQuery() : {} {
-    <INSERT_INTO> tableName() ( columnNameList() ) ?
-    <VALUES> <LEFT_PAREN> value() (<COMMA> value())* <RIGHT_PAREN>
+  <INSERT> <INTO> tableName() ( columnNameList() ) ?
+  <VALUES> <LEFT_PAREN> value() (<COMMA> value())* <RIGHT_PAREN>
 }
 
+/// @brief Parse null or comparable value
 void value() : {} {
-    <NULL> | comparableValue()
+  <NULL> | comparableValue()
 }
