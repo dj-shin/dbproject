@@ -9,7 +9,13 @@ PARSER_BEGIN(SimpleDBMSParser)
 public class SimpleDBMSParser {
   public static final int PRINT_SYNTAX_ERROR = 0;
   public static final int PRINT_CREATE_TABLE = 1;
-  
+  public static final int PRINT_DROP_TABLE =   2;
+  public static final int PRINT_DESC =         3;
+  public static final int PRINT_SELECT =       4;
+  public static final int PRINT_INSERT =       5;
+  public static final int PRINT_DELETE =       6;
+  public static final int PRINT_SHOW_TABLES =  7;
+
   public static void main(String args[]) throws ParseException {
     SimpleDBMSParser parser = new SimpleDBMSParser(System.in);
     System.out.print("DB_2014-18992> ");
@@ -33,6 +39,24 @@ public class SimpleDBMSParser {
       case PRINT_CREATE_TABLE:
       	System.out.println("\'CREATE TABLE\' requested");
       	break;
+      case PRINT_DROP_TABLE:
+      	System.out.println("\'DROP TABLE\' requested");
+      	break;
+      case PRINT_DESC:
+      	System.out.println("\'DESC' requested");
+      	break;
+      case PRINT_INSERT:
+      	System.out.println("\'INSERT' requested");
+      	break;
+      case PRINT_DELETE:
+      	System.out.println("\'DELETE' requested");
+      	break;
+      case PRINT_SELECT:
+      	System.out.println("\'SELECT' requested");
+      	break;
+      case PRINT_SHOW_TABLES:
+      	System.out.println("\'SHOW TABLES' requested");
+      	break;
     }
     System.out.print("DB_2014-18992> ");
   }
@@ -40,18 +64,44 @@ public class SimpleDBMSParser {
 
 PARSER_END(SimpleDBMSParser)
 
-SKIP : { " " | "\r" | "\t" | "\n" }
+SKIP : { <#TO_SKIP : " " | "\r" | "\t" | "\n" >
+| <WS : (<TO_SKIP>)+> }
 
 TOKEN : /* Keywords */ {
   < EXIT : "exit" >
 | < INT : "int" >
 | < CHAR : "char" >
 | < DATE : "date" >
-| < CREATE_TABLE : "create table" >
-| < NOT_NULL : "not null" >
-| < PRIMARY_KEY : "primary key" >
-| < FOREIGN_KEY : "foreign key" >
 | < REFERENCES : "references" >
+| < DESC : "desc" >
+| < SELECT : "select" >
+| < AS : "as" >
+| < FROM : "from" >
+| < WHERE : "where" >
+| < OR : "or" >
+| < AND : "and" >
+| < NOT : "not" >
+| < IS : "is" >
+| < VALUES : "values" >
+| < NULL : "null" >
+| < TABLES : "tables">
+| < TABLE : "table">
+| < KEY : "key" >
+| < INSERT : "insert" >
+| < INTO : "into" >
+| < DELETE : "delete" >
+| < DROP : "drop">
+| < SHOW : "show">
+| < PRIMARY : "primary">
+| < CREATE : "create">
+| < FOREIGN : "foreign">
+| < CREATE_TABLE : <CREATE> <WS> <TABLE> <WS> >
+| < PRIMARY_KEY : <PRIMARY> <WS> <KEY>>
+| < FOREIGN_KEY : <FOREIGN> <WS> <KEY>>
+| < DROP_TABLE : <DROP> <WS> <TABLE> <WS> >
+| < SHOW_TABLES : <SHOW> <WS> <TABLES> <WS> >
+| < INSERT_INTO : <INSERT> <WS> <INTO> <WS> >
+| < DELETE_FROM : <DELETE> <WS> <FROM> <WS> >
 }
 
 TOKEN : {
@@ -59,19 +109,29 @@ TOKEN : {
 | < LEFT_PAREN : "(" >
 | < RIGHT_PAREN : ")" >
 | < COMMA : "," >
-| < UNDERSCORE : "_" >
+| < #UNDERSCORE : "_" >
 | < SIGN : "+" | "-" >
+| < DATE_VALUE : <NNNN> "-" <NN> "-" <NN> >
 | < DIGIT : [ "0"-"9" ] >
-| < ALPHABET : [ "A"-"Z", "a"-"z" ] >
+| < #ALPHABET : [ "A"-"Z", "a"-"z" ] >
+| < #QUOTE : "'">
+| < PERIOD : ".">
+| < ASTERISK : "*">
+| < #NNNN : (<DIGIT>){4} >
+| < #NN : (<DIGIT>){2} >
+| < LEQ : "<=">
+| < LT : "<">
+| < GEQ : ">=">
+| < GT : ">">
+| < EQ : "=">
+| < NEQ : "!=">
+| < CHARSTRING : <QUOTE> (~["'"])* <QUOTE> >
+| < LEGAL_IDENTIFIER : <ALPHABET> ( <ALPHABET> | <UNDERSCORE> )* >
 }
 
 void command() : {} {
   queryList()
-| (
-    < EXIT >
-    < SEMICOLON >
-    { System.exit(0); }
-  ) 
+| ( < EXIT > < SEMICOLON > { System.exit(0); } )
 }
 
 void queryList() : { int q; } {
@@ -84,9 +144,13 @@ void queryList() : { int q; } {
 
 int query() : { int q; } {
   (
-    createTableQuery() {
-      q = PRINT_CREATE_TABLE;
-    }
+    createTableQuery() { q = PRINT_CREATE_TABLE; }
+    | dropTable() { q = PRINT_DROP_TABLE; }
+    | descQuery() { q = PRINT_DESC; }
+    | selectQuery() { q = PRINT_SELECT; }
+    | insertQuery() { q = PRINT_INSERT; }
+    | deleteQuery() { q = PRINT_DELETE; }
+    | <SHOW_TABLES> { q = PRINT_SHOW_TABLES; }
   )
   (
     { return q; }
@@ -94,19 +158,11 @@ int query() : { int q; } {
 }
 
 void createTableQuery() : {} {
-  < CREATE_TABLE >
-  tableName()
-  tableElementList()
+  < CREATE_TABLE > tableName() tableElementList()
 }
 
 void tableElementList() : {} {
-  < LEFT_PAREN >
-  tableElement()
-  (
-    < COMMA >
-    tableElement()
-  )*
-  < RIGHT_PAREN >
+  < LEFT_PAREN > tableElement() ( < COMMA > tableElement() )* < RIGHT_PAREN >
 }
 
 void tableElement() : {} {
@@ -115,11 +171,11 @@ void tableElement() : {} {
 }
 
 void columnDefinition() : {} {
-  columnName()
-  dataType()
-  (
-    < NOT_NULL >
-  )?
+  columnName() dataType() ( notNull() )?
+}
+
+void notNull() : {} {
+    <NOT> <NULL>
 }
 
 void tableConstraintDefinition() : {} {
@@ -128,59 +184,132 @@ void tableConstraintDefinition() : {} {
 }
 
 void primaryKeyConstraint() : {} {
-  < PRIMARY_KEY >
-  columnNameList()
+  < PRIMARY_KEY > columnNameList()
 }
 
 void referentialConstraint() : {} {
-  < FOREIGN_KEY >
-  columnNameList()
-  < REFERENCES >
-  tableName()
-  columnNameList()
+  < FOREIGN_KEY > columnNameList() < REFERENCES > tableName() columnNameList()
 }
 
 void columnNameList() : {} {
-  < LEFT_PAREN >
-  columnName()
-  (
-    < COMMA >
-    columnName()
-  )*
-  < RIGHT_PAREN >
+  <LEFT_PAREN> columnName() ( <COMMA> columnName() )* <RIGHT_PAREN>
 }
 
 void dataType() : {} {
-  < INT >
-| (
-    < CHAR >
-    < LEFT_PAREN >
-    intValue()
-    < RIGHT_PAREN >
-  )
-| < DATE >
+  <INT>
+| ( <CHAR> <LEFT_PAREN> intValue() <RIGHT_PAREN> )
+| <DATE>
 }
 
 void tableName() : {} {
-  legalIdentifier()
+  <LEGAL_IDENTIFIER>
 }
 
 void columnName() : {} {
-  legalIdentifier()
+  <LEGAL_IDENTIFIER>
 }
 
 void intValue() : {} {
-  (
-    < SIGN >
-  )?
-  (
-    < DIGIT >
-  )+
+  ( <SIGN> )? ( <DIGIT> )+
 }
 
-void legalIdentifier() : {} {
-  < ALPHABET >
-  (
-    < ALPHABET > | < UNDERSCORE >
-  )*
+void dropTable() : {} {
+    <DROP_TABLE> tableName()
+}
+
+void descQuery() : {} {
+    <DESC> tableName()
+}
+
+void selectQuery() : {} {
+    <SELECT> selectList() tableExp()
+}
+
+void selectList() : {} {
+    <ASTERISK> | selectedColumn() ( <COMMA> selectedColumn() )*
+}
+
+void selectedColumn() : {} {
+    (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) ( <AS> columnName() ) ?
+}
+
+void tableExp() : {} {
+    fromClause() ( whereClause() ) ?
+}
+
+void fromClause() : {} {
+    <FROM> tableReferenceList()
+}
+
+void tableReferenceList() : {} {
+    referedTable() (<COMMA> referedTable()) *
+}
+
+void referedTable() : {} {
+    tableName() (<AS> tableName()) ?
+}
+
+void whereClause() : {} {
+    <WHERE> booleanValueExp()
+}
+
+void booleanValueExp() : {} {
+    booleanTerm() ( <OR> booleanValueExp() ) ?
+}
+
+void booleanTerm() : {} {
+    booleanFactor() ( <AND> booleanTerm() ) ?
+}
+
+void booleanFactor() : {} {
+    (<NOT>) ? booleanTest()
+}
+
+void booleanTest() : {} {
+    predicate() | parenthesizedBooleanExp()
+}
+
+void parenthesizedBooleanExp() : {} {
+    <LEFT_PAREN> booleanValueExp() <RIGHT_PAREN>
+}
+
+void predicate() : {} {
+    LOOKAHEAD(2) comparisonPredicate() | nullPredicate()
+}
+
+void comparisonPredicate() : {} {
+    compOperand() compOp() compOperand()
+}
+
+void compOperand() : {} {
+    comparableValue() | (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() )
+}
+
+void compOp() : {} {
+    <LEQ> | <GEQ> | <LT> | <GT> | <EQ> | <NEQ>
+}
+
+void comparableValue() : {} {
+    intValue() | <CHARSTRING> | <DATE_VALUE>
+}
+
+void nullPredicate() : {} {
+    (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) nullOperation()
+}
+
+void nullOperation() : {} {
+    <IS> (<NOT>) ? <NULL>
+}
+
+void deleteQuery() : {} {
+    <DELETE_FROM> tableName() ( whereClause() ) ?
+}
+
+void insertQuery() : {} {
+    <INSERT_INTO> tableName() ( columnNameList() ) ?
+    <VALUES> <LEFT_PAREN> value() (<COMMA> value())* <RIGHT_PAREN>
+}
+
+void value() : {} {
+    <NULL> | comparableValue()
 }
