@@ -13,14 +13,16 @@
 
     <target name="build" depends="compile">
         <javac srcdir="build" destdir="build/classes" />
-    </target>
-
-    <target name="run" depends="build">
-        <java classname="SimpleDBMSParser" classpath="build/classes"/>
+        <jar basedir="build/classes" destfile="PRJ1-1_2014-18992.jar">
+            <manifest>
+                <attribute name="Main-Class" value="SimpleDBMSParser"></attribute>
+            </manifest>
+        </jar>
     </target>
 
     <target name="clean" >
         <delete dir="build"/>
+        <delete file="PRJ1-1_2014-18992.jar"/>
     </target>
 
 </project>

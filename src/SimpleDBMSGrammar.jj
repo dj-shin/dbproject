@@ -30,7 +30,7 @@ public class SimpleDBMSParser {
       try {
         parser.command();
       }
-      catch (Exception e) {
+      catch (Throwable e) {
         printMessage(PRINT_SYNTAX_ERROR);
         SimpleDBMSParser.ReInit(System.in);
       }
@@ -109,9 +109,9 @@ TOKEN : {
 | < RIGHT_PAREN : ")" >
 | < COMMA : "," >
 | < #UNDERSCORE : "_" >
-| < SIGN : "+" | "-" >
+| < #SIGN : "+" | "-" >
 | < DATE_VALUE : <NNNN> "-" <NN> "-" <NN> >
-| < DIGIT : [ "0"-"9" ] >
+| < #DIGIT : [ "0"-"9" ] >
 | < #ALPHABET : [ "A"-"Z", "a"-"z" ] >
 | < #QUOTE : "'">
 | < PERIOD : ".">
@@ -124,8 +124,12 @@ TOKEN : {
 | < GT : ">">
 | < EQ : "=">
 | < NEQ : "!=">
-| < CHARSTRING : <QUOTE> (~["\'"])* <QUOTE> >
+| < CHARSTRING : <QUOTE> (<NON_QUOTE_SPECIAL_CHARACTER> | <DIGIT> | <ALPHABET> | " ")* <QUOTE> >
+| < #NON_QUOTE_SPECIAL_CHARACTER : ["~", "`", "!", "@", "#", "$", "%", "^", "&",
+"*", "(", ")", "-", "_", "+", "=", "|", "{", "[", "]", "}", "\\", ";", ":", ",",
+"<", ".", ">", "?", "/"]>
 | < LEGAL_IDENTIFIER : <ALPHABET> ( <ALPHABET> | <UNDERSCORE> )* >
+| < INT_VALUE : ( <SIGN> )? ( <DIGIT> )+ >
 }
 
 void command() : {} {
@@ -209,7 +213,7 @@ void columnNameList() : {} {
 /// @brief  Parse integer / char(size) / date value format
 void dataType() : {} {
   <INT>
-| ( <CHAR> <LEFT_PAREN> intValue() <RIGHT_PAREN> )
+| ( <CHAR> <LEFT_PAREN> <INT_VALUE> <RIGHT_PAREN> )
 | <DATE>
 }
 
@@ -221,11 +225,6 @@ void tableName() : {} {
 /// @brief  Parse column name
 void columnName() : {} {
   <LEGAL_IDENTIFIER>
-}
-
-/// @brief  Parse integer value
-void intValue() : {} {
-  ( <SIGN> )? ( <DIGIT> )+
 }
 
 /// @brief  Parse "drop table <tableName>" format
@@ -336,7 +335,7 @@ void compOp() : {} {
 
 /// @brief Parse comparable values
 void comparableValue() : {} {
-  intValue() | <CHARSTRING> | <DATE_VALUE>
+  <INT_VALUE> | <CHARSTRING> | <DATE_VALUE>
 }
 
 /// @brief Parse null predicate
