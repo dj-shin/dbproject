@@ -11,6 +11,20 @@ options {
 
 PARSER_BEGIN(SimpleDBMSParser)
 
+import marodb.MaroDBMS;
+import marodb.Field;
+import marodb.type.DataType;
+import marodb.type.IntType;
+import marodb.type.CharType;
+import marodb.type.DateType;
+import marodb.constraint.Constraint;
+import marodb.constraint.PkConstraint;
+import marodb.constraint.FkConstraint;
+import marodb.util.Pair;
+import marodb.exceptions.QueryError;
+import marodb.exceptions.SchemaError;
+import java.util.ArrayList;
+
 public class SimpleDBMSParser {
   /// Type of SQL queries
   public static final int PRINT_SYNTAX_ERROR = 0;
@@ -21,16 +35,19 @@ public class SimpleDBMSParser {
   public static final int PRINT_INSERT =       5;
   public static final int PRINT_DELETE =       6;
   public static final int PRINT_SHOW_TABLES =  7;
+  public static MaroDBMS dbms;
 
   public static void main(String args[]) throws ParseException {
     SimpleDBMSParser parser = new SimpleDBMSParser(System.in);
     System.out.print("DB_2014-18992> ");
+    dbms = new MaroDBMS();
 
     while (true) {
       try {
         parser.command();
       }
       catch (Throwable e) {
+        e.printStackTrace();
         printMessage(PRINT_SYNTAX_ERROR);
         SimpleDBMSParser.ReInit(System.in);
       }
@@ -134,7 +151,7 @@ TOKEN : {
 
 void command() : {} {
   queryList()
-| ( <EXIT> <SEMICOLON> { System.exit(0); } )
+| ( <EXIT> <SEMICOLON> { dbms.close(); System.exit(0); } )
 }
 
 void queryList() : { int q; } {
@@ -155,33 +172,78 @@ int query() : { int q; } {
     | selectQuery() { q = PRINT_SELECT; }
     | insertQuery() { q = PRINT_INSERT; }
     | deleteQuery() { q = PRINT_DELETE; }
-    // "show tables" Query
-    | <SHOW> <TABLES> { q = PRINT_SHOW_TABLES; }
+    | showTableQuery() { q = PRINT_SHOW_TABLES; }
   )
   (
     { return q; }
   )
 }
 
+// "show tables" Query
+void showTableQuery() : {} {
+  <SHOW> <TABLES>
+  { dbms.showTables(); }
+}
+
 /// @brief  Parse "create table <table_name> (<table element list>)" form
-void createTableQuery() : {} {
-  <CREATE> <TABLE> tableName() tableElementList()
+void createTableQuery() :
+{
+  String tablename;
+  Pair<ArrayList<Field>, ArrayList<Constraint>> fields;
+}
+{
+  <CREATE> <TABLE>
+  tablename = tableName()
+  fields = tableElementList() {
+    try {
+      dbms.addTable(tablename, fields);
+    } catch (QueryError qe) {
+      System.out.println("Create table has failed: " + qe.errorMessage());
+      return;
+    } catch (SchemaError se) {
+      System.out.println(se.errorMessage());
+      return;
+    }
+    System.out.println("'" + tablename + "' table is created");
+  }
 }
 
 /// @brief  Parse "( <table element list> )" format
-void tableElementList() : {} {
-  <LEFT_PAREN> tableElement() ( <COMMA> tableElement() )* <RIGHT_PAREN>
+Pair<ArrayList<Field>, ArrayList<Constraint>> tableElementList() : {
+  Pair<Field, Constraint> field;
+  ArrayList<Field> fields = new ArrayList<Field>();
+  ArrayList<Constraint> constraints = new ArrayList<Constraint>();
+} {
+  <LEFT_PAREN> field = tableElement() {
+    if (field.first() != null) fields.add(field.first());
+    else constraints.add(field.second());
+  }
+  ( <COMMA> field = tableElement() {
+    if (field.first() != null) fields.add(field.first());
+    else constraints.add(field.second());
+  })* <RIGHT_PAREN>
+  { return new Pair<ArrayList<Field>, ArrayList<Constraint>>(fields, constraints); }
 }
 
 /// @brief  Parse <table element> format
-void tableElement() : {} {
-  columnDefinition()
-| tableConstraintDefinition()
+Pair<Field, Constraint> tableElement() : {
+  Field field;
+  Constraint constraint;
+} {
+  field = columnDefinition() { return new Pair<Field, Constraint>(field, null); }
+| constraint = tableConstraintDefinition() { return new Pair<Field, Constraint>(null, constraint); }
 }
 
 /// @brief  Parse "<column_name> <data type> [not null]" format
-void columnDefinition() : {} {
-  columnName() dataType() ( notNull() )?
+Field columnDefinition() :
+{
+  String column;
+  DataType type;
+  boolean not_null = false;
+} {
+  column = columnName()
+  type = dataType() ( notNull() { not_null = true; })?
+  { return new Field(column, type, not_null); }
 }
 
 /// @brief  Parse "[not] null" format
@@ -190,51 +252,92 @@ void notNull() : {} {
 }
 
 /// @brief  Parse primary key or foreign key constraint formats
-void tableConstraintDefinition() : {} {
-  primaryKeyConstraint()
-| referentialConstraint()
+Constraint tableConstraintDefinition() : {
+  Constraint constraint;
+} {
+  constraint = primaryKeyConstraint()
+  { return constraint; }
+| constraint = referentialConstraint()
+  { return constraint; }
 }
 
 /// @brief  Parse "primary key(...)" format
-void primaryKeyConstraint() : {} {
-  <PRIMARY> <KEY> columnNameList()
+Constraint primaryKeyConstraint() : {
+  ArrayList<String> columns;
+} {
+  <PRIMARY> <KEY> columns = columnNameList()
+  { return new PkConstraint(columns); }
 }
 
 /// @brief  Parse "foreign key(...)" format
-void referentialConstraint() : {} {
-  <FOREIGN> <KEY> columnNameList() <REFERENCES> tableName() columnNameList()
+FkConstraint referentialConstraint() : {
+  ArrayList<String> columns;
+  String table;
+  ArrayList<String> referenceList;
+} {
+  <FOREIGN> <KEY> columns = columnNameList() <REFERENCES>
+  table = tableName()
+  referenceList = columnNameList()
+  { return new FkConstraint(columns, table, referenceList); }
 }
 
 /// @brief  Parse "(<columnName>, ...)" format
-void columnNameList() : {} {
-  <LEFT_PAREN> columnName() ( <COMMA> columnName() )* <RIGHT_PAREN>
+ArrayList<String> columnNameList() : {
+  ArrayList<String> result = new ArrayList<String>();
+  String column;
+} {
+  <LEFT_PAREN> column = columnName() { result.add(column.toString()); }
+  ( <COMMA> column = columnName() { result.add(column.toString()); } )* <RIGHT_PAREN>
+  { return result; }
 }
 
 /// @brief  Parse integer / char(size) / date value format
-void dataType() : {} {
-  <INT>
-| ( <CHAR> <LEFT_PAREN> <INT_VALUE> <RIGHT_PAREN> )
-| <DATE>
+DataType dataType() : { Token length; } {
+  <INT> { return new IntType(); }
+| ( <CHAR> <LEFT_PAREN> length = <INT_VALUE> <RIGHT_PAREN> ) { return new CharType(Integer.parseInt(length.image)); }
+| <DATE> { return new DateType(); }
 }
 
 /// @brief  Parse table name
-void tableName() : {} {
-  <LEGAL_IDENTIFIER>
+String tableName() : { Token tablename; } {
+  tablename = <LEGAL_IDENTIFIER>
+  { return tablename.toString(); }
 }
 
 /// @brief  Parse column name
-void columnName() : {} {
-  <LEGAL_IDENTIFIER>
+String columnName() : { Token column; } {
+  column = <LEGAL_IDENTIFIER>
+  { return column.toString(); }
 }
 
 /// @brief  Parse "drop table <tableName>" format
-void dropTable() : {} {
-  <DROP> <TABLE> tableName()
+void dropTable() : {
+  String tablename;
+} {
+  <DROP> <TABLE> tablename = tableName()
+  {
+    try {
+      dbms.dropTable(tablename);
+    } catch ( QueryError qe ) {
+      System.out.println("Drop table has failed: " + qe.errorMessage());
+      return;
+    }
+    System.out.println("'" + tablename + "' is dropped");
+  }
 }
 
 /// @brief  Parse "desc <tableName>" format
-void descQuery() : {} {
-  <DESC> tableName()
+void descQuery() : {
+  String tablename;
+} {
+  <DESC> tablename = tableName()
+  {
+    try {
+    dbms.descTable(tablename);
+    } catch ( QueryError qe ) {
+      System.out.println(qe.errorMessage());
+    }
+  }
 }
 
 /// @brief  Parse "select ..." format

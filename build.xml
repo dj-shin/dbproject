@@ -12,11 +12,16 @@
     </target>
 
     <target name="build" depends="compile">
-        <javac srcdir="build" destdir="build/classes" />
+        <javac srcdir="build:src" destdir="build/classes" includeantruntime="false">
+            <classpath>
+                <pathelement path="lib/je-7.0.6.jar"></pathelement>
+            </classpath>
+        </javac>
         <jar basedir="build/classes" destfile="PRJ1-1_2014-18992.jar">
             <manifest>
                 <attribute name="Main-Class" value="SimpleDBMSParser"></attribute>
             </manifest>
+            <zipgroupfileset includes="je-7.0.6.jar" dir="lib"></zipgroupfileset>
         </jar>
     </target>
 
@@ -25,4 +30,8 @@
         <delete file="PRJ1-1_2014-18992.jar"/>
     </target>
 
+    <target name="dbclean" >
+        <delete dir="db"/>
+        <mkdir dir="db"/>
+    </target>
 </project>
