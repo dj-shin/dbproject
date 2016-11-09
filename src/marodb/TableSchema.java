@@ -3,6 +3,8 @@
  */
 package marodb;
 
+import marodb.exceptions.*;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -36,25 +38,21 @@ public class TableSchema implements Serializable {
         return count;
     }
 
-    public boolean isCorrectPk(ArrayList<String> columnList) {
+    public void checkPk(ArrayList<String> columnList) throws QueryError {
         // Check for duplicate
         Set<String> set = new HashSet<String>(columnList);
         if (set.size() != columnList.size()) {
-            System.out.println("Duplicate columnList");
-            return false;
-        }
-        if (columnList.size() != pkCount()) {
-            System.out.println("Not full pkList");
-            return false;
+            throw new ReferenceDuplicateError();
         }
         // Valid column && pk
         for (String column : columnList) {
-            if ( !fields.containsKey(column) || !fields.get(column).getPk()) {
-                System.out.println("Invalid key " + column);
-                return false;
+            if ( !fields.containsKey(column) ) {
+                throw new ReferenceColumnExistenceError();
+            }
+            if ( !fields.get(column).getPk() ) {
+                throw new ReferenceNonPrimaryKeyError();
             }
         }
-        return true;
     }
 
     public String toString() {

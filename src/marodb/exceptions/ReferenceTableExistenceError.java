@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class ReferenceTableExistenceError extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "foreign key references non existing table";
     }
 }

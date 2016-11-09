@@ -11,7 +11,7 @@ public class DropReferencedTableError extends QueryError {
     }
 
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "'" + tableName + "' is referenced by other table";
     }
 }

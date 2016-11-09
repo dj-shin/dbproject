@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class DuplicateColumnDefError extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "column definition is duplicated";
     }
 }

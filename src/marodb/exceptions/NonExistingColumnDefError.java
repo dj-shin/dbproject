@@ -11,7 +11,7 @@ public class NonExistingColumnDefError extends QueryError {
     }
 
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "'" + columnName + "' does not exists in column definition";
     }
 }

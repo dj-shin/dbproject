@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class ReferenceNonPrimaryKeyError extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "foreign key references non primary key column";
     }
 }

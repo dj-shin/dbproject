@@ -47,7 +47,7 @@ public class SimpleDBMSParser {
         parser.command();
       }
       catch (Throwable e) {
-        e.printStackTrace();
+        System.out.println(e.getMessage());
         printMessage(PRINT_SYNTAX_ERROR);
         SimpleDBMSParser.ReInit(System.in);
       }
@@ -60,25 +60,18 @@ public class SimpleDBMSParser {
       	System.out.println("Syntax error");
       	break;
       case PRINT_CREATE_TABLE:
-      	System.out.println("\'CREATE TABLE\' requested");
       	break;
       case PRINT_DROP_TABLE:
-      	System.out.println("\'DROP TABLE\' requested");
       	break;
       case PRINT_DESC:
-      	System.out.println("\'DESC' requested");
       	break;
       case PRINT_INSERT:
-      	System.out.println("\'INSERT' requested");
       	break;
       case PRINT_DELETE:
-      	System.out.println("\'DELETE' requested");
       	break;
       case PRINT_SELECT:
-      	System.out.println("\'SELECT' requested");
       	break;
       case PRINT_SHOW_TABLES:
-      	System.out.println("\'SHOW TABLES' requested");
       	break;
     }
     System.out.print("DB_2014-18992> ");
@@ -198,10 +191,10 @@ void createTableQuery() :
     try {
       dbms.addTable(tablename, fields);
     } catch (QueryError qe) {
-      System.out.println("Create table has failed: " + qe.errorMessage());
+      System.out.println("Create table has failed: " + qe.getMessage());
       return;
     } catch (SchemaError se) {
-      System.out.println(se.errorMessage());
+      System.out.println(se.getMessage());
       return;
     }
     System.out.println("'" + tablename + "' table is created");
@@ -286,8 +279,8 @@ ArrayList<String> columnNameList() : {
   ArrayList<String> result = new ArrayList<String>();
   String column;
 } {
-  <LEFT_PAREN> column = columnName() { result.add(column.toString()); }
-  ( <COMMA> column = columnName() { result.add(column.toString()); } )* <RIGHT_PAREN>
+  <LEFT_PAREN> column = columnName() { result.add(column.toString().toLowerCase()); }
+  ( <COMMA> column = columnName() { result.add(column.toString().toLowerCase()); } )* <RIGHT_PAREN>
   { return result; }
 }
 
@@ -301,13 +294,13 @@ DataType dataType() : { Token length; } {
 /// @brief  Parse table name
 String tableName() : { Token tablename; } {
   tablename = <LEGAL_IDENTIFIER>
-  { return tablename.toString(); }
+  { return tablename.toString().toLowerCase(); }
 }
 
 /// @brief  Parse column name
 String columnName() : { Token column; } {
   column = <LEGAL_IDENTIFIER>
-  { return column.toString(); }
+  { return column.toString().toLowerCase(); }
 }
 
 /// @brief  Parse "drop table <tableName>" format
@@ -319,7 +312,7 @@ void dropTable() : {
     try {
       dbms.dropTable(tablename);
     } catch ( QueryError qe ) {
-      System.out.println("Drop table has failed: " + qe.errorMessage());
+      System.out.println("Drop table has failed: " + qe.getMessage());
       return;
     }
     System.out.println("'" + tablename + "' is dropped");
@@ -335,7 +328,7 @@ void descQuery() : {
     try {
     dbms.descTable(tablename);
     } catch ( QueryError qe ) {
-      System.out.println(qe.errorMessage());
+      System.out.println(qe.getMessage());
     }
   }
 }

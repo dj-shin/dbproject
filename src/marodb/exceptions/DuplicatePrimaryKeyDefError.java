@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class DuplicatePrimaryKeyDefError extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "primary key definition is duplicated";
     }
 }

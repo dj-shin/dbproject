@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class NoSuchTable extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "No such table";
     }
 }

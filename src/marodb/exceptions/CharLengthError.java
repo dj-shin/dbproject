@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class CharLengthError extends SchemaError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "Char length should be over 0";
     }
 }

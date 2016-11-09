@@ -5,7 +5,7 @@ package marodb.exceptions;
  */
 public class TableExistenceError extends QueryError {
     @Override
-    public String errorMessage() {
+    public String getMessage() {
         return "table with the same name already exists";
     }
 }
