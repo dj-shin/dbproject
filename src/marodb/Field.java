@@ -4,6 +4,7 @@ import marodb.type.DataType;
 import marodb.util.Pair;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 
 /**
  * Created by LastOne on 2016-10-30.
@@ -13,14 +14,14 @@ public class Field implements Serializable {
     private DataType type;
     private boolean not_null;
     private boolean pk;
-    private Pair<String, String> fk;
+    private ArrayList<Pair<String, String>> fkList;
 
     public Field(String columnName, DataType type, boolean not_null) {
         this.columnName = columnName;
         this.type = type;
         this.not_null = not_null;
         this.pk = false;
-        this.fk = null;
+        this.fkList = new ArrayList<Pair<String, String>>();
     }
 
     public DataType getType() {
@@ -40,12 +41,12 @@ public class Field implements Serializable {
         return columnName;
     }
 
-    public void setFk(String table, String column) {
-        fk = new Pair<String, String>(table, column);
+    public void addFk(String table, String column) {
+        fkList.add(new Pair<String, String>(table, column));
     }
 
-    public Pair<String, String> getFk() {
-        return fk;
+    public ArrayList<Pair<String, String>> getFkList() {
+        return fkList;
     }
 
     @Override
@@ -57,7 +58,7 @@ public class Field implements Serializable {
             is_null = "Y";
         }
 
-        if (fk != null) {
+        if (fkList.size() > 0) {
             if (pk) {
                 key = "PRI/FOR";
             } else {

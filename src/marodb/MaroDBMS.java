@@ -2,6 +2,7 @@ package marodb;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
+import java.lang.ref.Reference;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -147,7 +148,11 @@ public class MaroDBMS {
                         if (!refColumn.getType().getType().equals(fkColumn.getType().getType())) {
                             throw new ReferenceTypeError();
                         }
-                        fkColumn.setFk(tableName, refColumnName);
+                        fkColumn.addFk(tableName, refColumnName);
+                    }
+                    // If referencing columns are not full primary key, raise error
+                    if (fkConstraint.getColumnList().size() != table.pkCount()) {
+                        throw new ReferenceNonFullPrimaryKeyError();
                     }
                 }
             }
@@ -183,9 +188,13 @@ public class MaroDBMS {
             cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
             do {
                 TableSchema foundTable = (TableSchema) dataBinding.entryToObject(foundData);
+                // For all fields in each table
                 for (Field field: foundTable.getFields().values()) {
-                    if (field.getFk() != null && field.getFk().first().equals(tableName)) {
-                        throw new DropReferencedTableError(tableName);
+                    // Find foreign key that references drop target table
+                    for (Pair<String, String> fk: field.getFkList()) {
+                        if (fk.first().equals(tableName)) {
+                            throw new DropReferencedTableError(tableName);
+                        }
                     }
                 }
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );

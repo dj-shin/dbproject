@@ -28,7 +28,7 @@ public class TableSchema implements Serializable {
         return fields;
     }
 
-    private int pkCount() {
+    public int pkCount() {
         int count = 0;
         for (Field field : fields.values()) {
             if (field.getPk()) {

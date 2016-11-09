@@ -17,7 +17,7 @@
                 <pathelement path="lib/je-7.0.6.jar"></pathelement>
             </classpath>
         </javac>
-        <jar basedir="build/classes" destfile="PRJ1-1_2014-18992.jar">
+        <jar basedir="build/classes" destfile="PRJ1-2_2014-18992.jar">
             <manifest>
                 <attribute name="Main-Class" value="SimpleDBMSParser"></attribute>
             </manifest>
@@ -27,7 +27,7 @@
 
     <target name="clean" >
         <delete dir="build"/>
-        <delete file="PRJ1-1_2014-18992.jar"/>
+        <delete file="PRJ1-2_2014-18992.jar"/>
     </target>
 
     <target name="dbclean" >
