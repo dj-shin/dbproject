@@ -16,8 +16,12 @@ import marodb.constraint.Constraint;
 import marodb.constraint.FkConstraint;
 import marodb.constraint.PkConstraint;
 import marodb.exceptions.*;
+import marodb.predicate.BooleanExp;
+import marodb.relation.Column;
+import marodb.relation.Relation;
 import marodb.type.CharType;
 import marodb.type.DataType;
+import marodb.type.Value;
 import marodb.util.Pair;
 
 /**
@@ -29,7 +33,8 @@ public class MaroDBMS {
     private static Database myDatabase = null;
     private static Database classDatabase = null;
     private static StoredClassCatalog classCatalog = null;
-    private static EntryBinding dataBinding = null;
+    private static EntryBinding schemaBinding = null;
+    private static EntryBinding relationBinding = null;
 
     private static final String TABLES = "_tables";
 
@@ -52,7 +57,8 @@ public class MaroDBMS {
         classDatabase = myDbEnvironment.openDatabase(null, "classDatabase", dbConfig);
 
         classCatalog = new StoredClassCatalog(classDatabase);
-        dataBinding = new SerialBinding(classCatalog, TableSchema.class);
+        schemaBinding = new SerialBinding(classCatalog, TableSchema.class);
+        relationBinding = new SerialBinding(classCatalog, Relation.class);
     }
 
     /**
@@ -159,8 +165,13 @@ public class MaroDBMS {
             // All constraints satisfied, create new table
             DatabaseEntry tables = new DatabaseEntry(TABLES.getBytes("UTF-8"));
             DatabaseEntry newTable = new DatabaseEntry();
-            dataBinding.objectToEntry(new TableSchema(tablename, schema), newTable);
+            schemaBinding.objectToEntry(new TableSchema(tablename, schema), newTable);
             cursor.put(tables, newTable);
+
+            DatabaseEntry tableName = new DatabaseEntry(tablename.getBytes("UTF-8"));
+            DatabaseEntry newRelation = new DatabaseEntry();
+            relationBinding.objectToEntry(new Relation(), newRelation);
+            cursor.put(tableName, newRelation);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         } catch (DatabaseException de) {
@@ -187,7 +198,10 @@ public class MaroDBMS {
             DatabaseEntry foundData = new DatabaseEntry();
             cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
             do {
-                TableSchema foundTable = (TableSchema) dataBinding.entryToObject(foundData);
+                if (!(schemaBinding.entryToObject(foundData) instanceof TableSchema)) {
+                    continue;
+                }
+                TableSchema foundTable = (TableSchema) schemaBinding.entryToObject(foundData);
                 // For all fields in each table
                 for (Field field: foundTable.getFields().values()) {
                     // Find foreign key that references drop target table
@@ -205,11 +219,26 @@ public class MaroDBMS {
             cursor = myDatabase.openCursor(null, null);
             cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
             do {
-                TableSchema foundTable = (TableSchema) dataBinding.entryToObject(foundData);
+                if (!(schemaBinding.entryToObject(foundData) instanceof TableSchema)) {
+                    continue;
+                }
+                TableSchema foundTable = (TableSchema) schemaBinding.entryToObject(foundData);
                 if (foundTable.getTableName().equals(tableName)) {
                     cursor.delete();
                     break;
                 }
+            } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
+            cursor.close();
+
+            cursor = myDatabase.openCursor(null, null);
+            foundKey = new DatabaseEntry(tableName.getBytes("UTF-8"));
+            foundData = new DatabaseEntry();
+            cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
+            do {
+                if (!(relationBinding.entryToObject(foundData) instanceof Relation)) {
+                    continue;
+                }
+                cursor.delete();
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -231,7 +260,10 @@ public class MaroDBMS {
                 return null;
             }
             do {
-                TableSchema foundTable = (TableSchema) dataBinding.entryToObject(foundData);
+                if (!(schemaBinding.entryToObject(foundData) instanceof TableSchema)) {
+                    continue;
+                }
+                TableSchema foundTable = (TableSchema) schemaBinding.entryToObject(foundData);
                 if (foundTable.getTableName().equals(tableName)) {
                     return foundTable;
                 }
@@ -242,6 +274,31 @@ public class MaroDBMS {
             cursor.close();
         }
         return table;
+    }
+
+    private Relation findRelation(String tableName) {
+        Cursor cursor = myDatabase.openCursor(null, null);
+
+        try {
+            DatabaseEntry foundKey = new DatabaseEntry(tableName.getBytes("UTF-8"));
+            DatabaseEntry foundData = new DatabaseEntry();
+            cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
+            if (foundData.getData() == null) {
+                return null;
+            }
+            do {
+                if (!(relationBinding.entryToObject(foundData) instanceof Relation)) {
+                    continue;
+                }
+                Relation foundRelation = (Relation) relationBinding.entryToObject(foundData);
+                return foundRelation;
+            } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } finally {
+            cursor.close();
+        }
+        return null;
     }
 
     public void showTables() {
@@ -258,7 +315,10 @@ public class MaroDBMS {
             }
             System.out.println("-------------------------------------------------");
             do {
-                TableSchema data = (TableSchema) dataBinding.entryToObject(foundData);
+                if (!(schemaBinding.entryToObject(foundData) instanceof TableSchema)) {
+                    continue;
+                }
+                TableSchema data = (TableSchema) schemaBinding.entryToObject(foundData);
                 System.out.println(data.getTableName());
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
             System.out.println("-------------------------------------------------");
@@ -281,6 +341,118 @@ public class MaroDBMS {
             System.out.println(field.toString());
         }
         System.out.println("-------------------------------------------------");
+    }
+
+    /**
+     *
+     * @param selectList    nullable
+     * @param from
+     * @param where         nullable
+     */
+    public void select(Pair<ArrayList<Column>, ArrayList<String>> selectList,
+                       ArrayList<Pair<String, String>> from, BooleanExp where) {
+        if (selectList == null) {
+            // selct * ...
+
+        }
+        else {
+            ArrayList<Column> columnList = selectList.first();
+            ArrayList<String> asList     = selectList.second();
+            for (Pair<String, String> refTable : from) {
+                String tableName = refTable.first();
+                Relation relation = findRelation(tableName);
+                relation.pprint();
+            }
+        }
+    }
+
+    /**
+     *
+     * @param table
+     * @param columnNameList    nullable
+     * @param valueList
+     * @throws QueryError
+     */
+    public void insert(String table, ArrayList<String> columnNameList, ArrayList<Value> valueList) throws InsertionError {
+        TableSchema tableSchema = findTable(table);
+        if (tableSchema == null) {
+            throw new NoSuchTable();
+        }
+
+        if (columnNameList == null) {
+            columnNameList = new ArrayList<String>();
+            for (String column : tableSchema.getFields().keySet()) {
+                columnNameList.add(column);
+            }
+        }
+        if (columnNameList.size() != valueList.size()) {
+            throw new InsertTypeMismatchError();
+        }
+        int index = 0;
+        boolean hasNull = false;
+        for (Value v : valueList) {
+            if (v.getType().getType().equals(DataType.NULLTYPE)) {
+                hasNull = true;
+                break;
+            }
+        }
+
+        LinkedHashMap<Column, Value> record = new LinkedHashMap<Column, Value>();
+        for (String column : columnNameList) {
+            Value v = valueList.get(index);
+            if (!tableSchema.getFields().containsKey(column)) {
+                throw new InsertColumnExistenceError(column);
+            }
+            Field field = tableSchema.getFields().get(column);
+            if (!field.getType().getType().equals(v.getType().getType())
+                    && !v.getType().getType().equals(DataType.NULLTYPE)) {
+                throw new InsertTypeMismatchError();
+            }
+
+            if (!field.nullable() && v.getType().getType().equals(DataType.NULLTYPE)) {
+                throw new InsertColumnNonNullableError(column);
+            }
+
+            if (!hasNull && field.getFkList() != null) {
+                for (Pair<String, String> fk : field.getFkList()) {
+                    String fkTable = fk.first();
+                    String fkColumn = fk.second();
+                    Relation foreignRelation = findRelation(fkTable);
+
+                }
+            }
+
+            record.put(new Column(table, column), v);
+            index++;
+        }
+
+        Relation relation = findRelation(table);
+        relation.addRecord(record);
+        updateRelation(table, relation);
+        relation.pprint();
+    }
+
+    public void updateRelation(String table, Relation relation) {
+        Cursor cursor = myDatabase.openCursor(null, null);
+        try {
+            // Foreign Key constraint check
+            DatabaseEntry foundKey = new DatabaseEntry(table.getBytes("UTF-8"));
+            DatabaseEntry foundData = new DatabaseEntry();
+            cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
+            do {
+                if (!(relationBinding.entryToObject(foundData) instanceof Relation)) {
+                    continue;
+                }
+                DatabaseEntry newRelation = new DatabaseEntry();
+                relationBinding.objectToEntry(relation, newRelation);
+                cursor.delete();
+                cursor.put(foundKey, newRelation);
+            } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } finally {
+            cursor.close();
+        }
     }
 
     public void close() {

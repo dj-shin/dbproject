@@ -17,12 +17,27 @@ import marodb.type.DataType;
 import marodb.type.IntType;
 import marodb.type.CharType;
 import marodb.type.DateType;
+import marodb.type.Value;
+import marodb.type.CharValue;
+import marodb.type.DateValue;
+import marodb.type.IntValue;
+import marodb.type.NullValue;
+import marodb.predicate.BooleanExp;
+import marodb.predicate.BooleanTerm;
+import marodb.predicate.BooleanTest;
+import marodb.predicate.CompareOperand;
+import marodb.predicate.CompareOperation;
+import marodb.predicate.ComparisonPredicate;
+import marodb.predicate.NullPredicate;
+import marodb.predicate.Predicate;
+import marodb.relation.Column;
 import marodb.constraint.Constraint;
 import marodb.constraint.PkConstraint;
 import marodb.constraint.FkConstraint;
 import marodb.util.Pair;
 import marodb.exceptions.QueryError;
 import marodb.exceptions.SchemaError;
+import marodb.exceptions.InsertionError;
 import java.util.ArrayList;
 
 public class SimpleDBMSParser {
@@ -47,7 +62,7 @@ public class SimpleDBMSParser {
         parser.command();
       }
       catch (Throwable e) {
-        System.out.println(e.getMessage());
+        System.out.println("Error : " + e.getMessage());
         printMessage(PRINT_SYNTAX_ERROR);
         SimpleDBMSParser.ReInit(System.in);
       }
@@ -334,130 +349,274 @@ void descQuery() : {
 }
 
 /// @brief  Parse "select ..." format
-void selectQuery() : {} {
-  <SELECT> selectList() tableExp()
+void selectQuery() : {
+  Pair<ArrayList<Column>, ArrayList<String>> selectlist;
+  Pair<ArrayList<Pair<String, String>>, BooleanExp> tableexp;
+} {
+  <SELECT> selectlist = selectList()
+  tableexp = tableExp()
+  {
+    dbms.select(selectlist, tableexp.first(), tableexp.second());
+  }
 }
 
 /// @brief Parse select list
 /// '*' or list of selected columns
-void selectList() : {} {
-  <ASTERISK> | selectedColumn() ( <COMMA> selectedColumn() )*
+Pair<ArrayList<Column>, ArrayList<String>> selectList() : {
+  ArrayList<Column> tablelist = new ArrayList<Column>();
+  ArrayList<String> aslist = new ArrayList<String>();
+  Pair<Column, String> column;
+} {
+  <ASTERISK> { return null; } |
+  column = selectedColumn()
+  {
+    tablelist.add(column.first());
+    aslist.add(column.second());
+  }
+  ( <COMMA> column = selectedColumn()
+  {
+    tablelist.add(column.first());
+    aslist.add(column.second());
+  } )*
+  { return new Pair<ArrayList<Column>, ArrayList<String>>(tablelist, aslist); }
 }
 
 /// @brief Parse selected column
 /// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
 /// determine first token will be used as tableName (if 2nd token is ".") or columnName
-void selectedColumn() : {} {
-  (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) ( <AS> columnName() ) ?
+Pair<Column, String> selectedColumn() : {
+  Pair<String, String> select;
+  String tablename = null;
+  String columnname;
+  String asColumn = null;
+} {
+  (LOOKAHEAD(2) tablename = tableName() <PERIOD> columnname = columnName() | columnname = columnName() )
+  { select = new Pair<String, String>(tablename, columnname); }
+  ( <AS> asColumn = columnName() ) ?
+  { return new Pair<Column, String>(new Column(select), asColumn); }
 }
 
 /// @brief Parse "from ... [where ...]" format
-void tableExp() : {} {
-  fromClause() ( whereClause() ) ?
+Pair<ArrayList<Pair<String, String>>, BooleanExp> tableExp() : {
+  ArrayList<Pair<String, String>> from;
+  BooleanExp where = null;
+} {
+  from = fromClause() ( where = whereClause() ) ?
+  { return new Pair<ArrayList<Pair<String, String>>, BooleanExp>(from, where); }
 }
 
 /// @brief Parse from clause
-void fromClause() : {} {
-  <FROM> tableReferenceList()
+ArrayList<Pair<String, String>> fromClause() : {
+  ArrayList<Pair<String, String>> result;
+} {
+  <FROM> result = tableReferenceList()
+  { return result; }
 }
 
 /// @brief Parse table reference list
-void tableReferenceList() : {} {
-  referedTable() (<COMMA> referedTable()) *
+ArrayList<Pair<String, String>> tableReferenceList() : {
+  ArrayList<Pair<String, String>> tablelist = new ArrayList<Pair<String, String>>();
+  Pair<String, String> table;
+} {
+  table = referedTable() { tablelist.add(table); }
+  (<COMMA> table = referedTable() { tablelist.add(table); } ) *
+  { return tablelist; }
 }
 
 /// @brief Parse "<tableName> [as <tableName>]" format
-void referedTable() : {} {
-  tableName() (<AS> tableName()) ?
+Pair<String, String> referedTable() : {
+  String tablename;
+  String rename = null;
+} {
+  tablename = tableName() (<AS> rename = tableName()) ?
+  { if (rename == null) rename = tablename;
+    return new Pair<String, String>(tablename, rename);
+  }
 }
 
 /// @brief Parse "where <predicate>" format
-void whereClause() : {} {
-  <WHERE> booleanValueExp()
+BooleanExp whereClause() : {
+  BooleanExp result;
+} {
+  <WHERE> result = booleanValueExp()
+  { return result; }
 }
 
 /// Collecting order of "or" "and" "not" affects operator precedence
 /// "not" should be collected first, then "and" and finally "or"
 
 /// @brief Collect "or" connected terms
-void booleanValueExp() : {} {
-  booleanTerm() ( <OR> booleanValueExp() ) ?
+BooleanExp booleanValueExp() : {
+  BooleanExp result;
+  BooleanTerm bterm;
+} {
+  bterm = booleanTerm() { result = new BooleanExp(bterm); }
+  ( <OR> result = booleanValueExp() { result.addFront(bterm); } ) ?
+  { return result; }
 }
 
 /// @brief Collect "and" connected terms
-void booleanTerm() : {} {
-  booleanFactor() ( <AND> booleanTerm() ) ?
+BooleanTerm booleanTerm() : {
+  BooleanTerm result;
+  BooleanTest btest;
+} {
+  btest = booleanFactor() { result = new BooleanTerm(btest); }
+  ( <AND> result = booleanTerm() { result.addFront(btest); } ) ?
+  { return result; }
 }
 
 /// @brief Collect "not" connected terms
-void booleanFactor() : {} {
-  (<NOT>) ? booleanTest()
+BooleanTest booleanFactor() : {
+  boolean not = false;
+  BooleanTest btest;
+} {
+  (<NOT> { not = true; } ) ? btest = booleanTest()
+  { btest.setNot(not); return btest; }
 }
 
 /// @brief  Parse expression which returns boolean value
-void booleanTest() : {} {
-  predicate() | parenthesizedBooleanExp()
+BooleanTest booleanTest() : {
+  Predicate p;
+  BooleanExp bexp;
+} {
+  p = predicate() { return new BooleanTest(p); } |
+  bexp = parenthesizedBooleanExp() { return new BooleanTest(bexp); }
 }
 
 /// @brief  Parse "( <boolean expression> )" format
-void parenthesizedBooleanExp() : {} {
-  <LEFT_PAREN> booleanValueExp() <RIGHT_PAREN>
+BooleanExp parenthesizedBooleanExp() : {
+  BooleanExp bexp;
+} {
+  <LEFT_PAREN> bexp = booleanValueExp() <RIGHT_PAREN>
+  { return bexp; }
 }
 
 /// @brief  Parse predicate statement
 /// Lookahead of 4 tokens is required because longest command prefix for comparison predicate and null predicate
 /// is <tableName> "." <columnName>. (4th token will be "is" or comparison operator, then we can determine)
-void predicate() : {} {
-  LOOKAHEAD(4) comparisonPredicate() | nullPredicate()
+Predicate predicate() : {
+  ComparisonPredicate cp;
+  NullPredicate np;
+} {
+  LOOKAHEAD(4) cp = comparisonPredicate() { return cp; } |
+  np = nullPredicate() { return np; }
 }
 
 /// @brief  Parse comparison predicate
-void comparisonPredicate() : {} {
-  compOperand() compOp() compOperand()
+ComparisonPredicate comparisonPredicate() : {
+  CompareOperand a, b;
+  CompareOperation op;
+} {
+  a = compOperand() op = compOp() b = compOperand()
+  { return new ComparisonPredicate(a, b, op); }
 }
 
 /// @brief Parse comparison operand
 /// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
 /// determine first token will be used as tableName (if 2nd token is ".") or columnName
-void compOperand() : {} {
-  comparableValue()
-| (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() )
+CompareOperand compOperand() : {
+  Value v;
+  String table = null;
+  String column;
+} {
+  v = comparableValue() { return new CompareOperand(v); }
+| (LOOKAHEAD(2) table = tableName() <PERIOD> column = columnName() | column = columnName() )
+  { return new CompareOperand(new Column(table, column)); }
 }
 
 /// @brief Parse comparison operators
-void compOp() : {} {
-  <LEQ> | <GEQ> | <LT> | <GT> | <EQ> | <NEQ>
+CompareOperation compOp() : {
+  Token t;
+} {
+  t = <LEQ> { return new CompareOperation(t.toString()); } |
+  t = <GEQ> { return new CompareOperation(t.toString()); } |
+  t = <LT> { return new CompareOperation(t.toString()); } |
+  t = <GT> { return new CompareOperation(t.toString()); } |
+  t = <EQ> { return new CompareOperation(t.toString()); } |
+  t = <NEQ> { return new CompareOperation(t.toString()); }
 }
 
 /// @brief Parse comparable values
-void comparableValue() : {} {
-  <INT_VALUE> | <CHARSTRING> | <DATE_VALUE>
+Value comparableValue() : {
+  IntValue intv;
+  CharValue charv;
+  DateValue datev;
+  Token t;
+} {
+  t = <INT_VALUE> { return new IntValue(Integer.parseInt(t.image)); } |
+  t = <CHARSTRING> { return new CharValue(t.toString().substring(1, t.toString().length() - 1)); } |
+  t = <DATE_VALUE> { return new DateValue(t.toString()); }
 }
 
 /// @brief Parse null predicate
 /// tableName and columnName share same token <LEGAL_IDENTIFIER>, so looking 2 tokens ahead is required to
 /// determine first token will be used as tableName (if 2nd token is ".") or columnName
-void nullPredicate() : {} {
-  (LOOKAHEAD(2) tableName() <PERIOD> columnName() | columnName() ) nullOperation()
+NullPredicate nullPredicate() : {
+  Pair<String, String> column = new Pair<String, String>(null, null);
+  String tablename, columnname;
+  boolean nullOp;
+} {
+  (LOOKAHEAD(2) tablename = tableName() <PERIOD> columnname = columnName()
+  { column.setFirst(tablename);
+    column.setSecond(columnname);
+  }|
+  columnname = columnName() {
+    column.setSecond(columnname);
+  } )
+  nullOp = nullOperation()
+  { return new NullPredicate(new Column(column), nullOp); }
 }
 
 /// @brief Parse null operation
-void nullOperation() : {} {
-  <IS> (<NOT>) ? <NULL>
+boolean nullOperation() : {
+  boolean result = true;
+} {
+  <IS> (<NOT> { result = false; } ) ? <NULL>
+  { return result; }
 }
 
 /// @brief Parse "delete from <tableName> [where ...]" format
-void deleteQuery() : {} {
-  <DELETE> <FROM> tableName() ( whereClause() ) ?
+void deleteQuery() : {
+  String tablename;
+  BooleanExp bexp = null;
+} {
+  <DELETE> <FROM> tablename = tableName() ( bexp = whereClause() ) ?
+  {
+  }
 }
 
 /// @brief Parse "insert into ..." format
-void insertQuery() : {} {
-  <INSERT> <INTO> tableName() ( columnNameList() ) ?
-  <VALUES> <LEFT_PAREN> value() (<COMMA> value())* <RIGHT_PAREN>
+void insertQuery() : {
+  String tablename;
+  ArrayList<String> columnnamelist = null;
+  ArrayList<Value> valuelist = new ArrayList<Value>();
+  Value v;
+} {
+  <INSERT> <INTO>
+  tablename = tableName()
+  ( columnnamelist = columnNameList() ) ?
+  <VALUES> <LEFT_PAREN> v = value() { valuelist.add(v); }
+  (<COMMA> v = value() { valuelist.add(v); } )* <RIGHT_PAREN>
+  {
+    try {
+      dbms.insert(tablename, columnnamelist, valuelist);
+    }
+    catch ( InsertionError ie ) {
+      System.out.println("Insertion has failed: " + ie.getMessage());
+      return;
+    }
+    catch ( Exception e ) {
+      System.out.println("Error: " + e.getMessage());
+      return;
+    }
+    System.out.println("The row is inserted");
+  }
 }
 
 /// @brief Parse null or comparable value
-void value() : {} {
-  <NULL> | comparableValue()
+Value value() : {
+  Value v;
+} {
+  <NULL> { return new NullValue(); }|
+  v = comparableValue() { return v; }
 }

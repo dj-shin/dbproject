@@ -9,5 +9,6 @@ public interface DataType extends Serializable {
     String INTTYPE = "int";
     String CHARTYPE = "char";
     String DATETYPE = "date";
+    String NULLTYPE = "NULL";
     String getType();
 }

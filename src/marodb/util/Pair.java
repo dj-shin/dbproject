@@ -29,4 +29,9 @@ public class Pair<S,T> implements Serializable {
     public void setSecond(T second) {
         this.second = second;
     }
+
+    @Override
+    public String toString() {
+        return "<" + first.toString() + ", " + second.toString() + ">";
+    }
 }

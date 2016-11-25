@@ -49,6 +49,10 @@ public class Field implements Serializable {
         return fkList;
     }
 
+    public boolean nullable() {
+        return !not_null;
+    }
+
     @Override
     public final String toString() {
         String is_null, key = "";
