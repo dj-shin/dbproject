@@ -38,6 +38,7 @@ import marodb.util.Pair;
 import marodb.exceptions.QueryError;
 import marodb.exceptions.SchemaError;
 import marodb.exceptions.InsertionError;
+import marodb.exceptions.SelectionError;
 import java.util.ArrayList;
 
 public class SimpleDBMSParser {
@@ -63,8 +64,9 @@ public class SimpleDBMSParser {
       }
       catch (Throwable e) {
         System.out.println("Error : " + e.getMessage());
-        printMessage(PRINT_SYNTAX_ERROR);
-        SimpleDBMSParser.ReInit(System.in);
+        throw e;
+        // printMessage(PRINT_SYNTAX_ERROR);
+        // SimpleDBMSParser.ReInit(System.in);
       }
     }
   }
@@ -341,7 +343,7 @@ void descQuery() : {
   <DESC> tablename = tableName()
   {
     try {
-    dbms.descTable(tablename);
+      dbms.descTable(tablename);
     } catch ( QueryError qe ) {
       System.out.println(qe.getMessage());
     }
@@ -356,7 +358,12 @@ void selectQuery() : {
   <SELECT> selectlist = selectList()
   tableexp = tableExp()
   {
-    dbms.select(selectlist, tableexp.first(), tableexp.second());
+    try {
+      dbms.select(selectlist, tableexp.first(), tableexp.second());
+    }
+    catch ( SelectionError se ) {
+      System.out.println("Selection has failed: " + se.getMessage());
+    }
   }
 }
 
@@ -582,6 +589,12 @@ void deleteQuery() : {
 } {
   <DELETE> <FROM> tablename = tableName() ( bexp = whereClause() ) ?
   {
+    try {
+      dbms.delete(tablename, bexp);
+    }
+    catch (QueryError qe) {
+      System.out.println(qe.getMessage());
+    }
   }
 }
 
@@ -603,10 +616,6 @@ void insertQuery() : {
     }
     catch ( InsertionError ie ) {
       System.out.println("Insertion has failed: " + ie.getMessage());
-      return;
-    }
-    catch ( Exception e ) {
-      System.out.println("Error: " + e.getMessage());
       return;
     }
     System.out.println("The row is inserted");

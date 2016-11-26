@@ -1,5 +1,7 @@
 package marodb.type;
 
+import java.util.Date;
+
 /**
  * Created by LastOne on 2016-11-18.
  */
@@ -22,6 +24,14 @@ public class DateValue implements Value {
     @Override
     public String toString() {
         return value.toString();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof DateValue) {
+            return ((DateValue)obj).value.equals(value);
+        }
+        return false;
     }
 }
 

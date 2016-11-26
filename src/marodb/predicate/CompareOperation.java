@@ -74,10 +74,12 @@ public class CompareOperation {
         }
     }
 
-    private boolean eval(Integer a, Integer b) {
-        if (a == null || b == null) {
+    private boolean eval(Integer aObj, Integer bObj) {
+        if (aObj == null || bObj == null) {
             return false;
         }
+        int a= aObj.intValue();
+        int b= bObj.intValue();
         if (op.equals(LEQ)) {
             return a <= b;
         } else if (op.equals(GEQ)) {

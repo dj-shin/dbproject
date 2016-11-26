@@ -23,5 +23,13 @@ public class IntValue implements Value {
     public String toString() {
         return value.toString();
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof IntValue) {
+            return ((IntValue)obj).value.equals(value);
+        }
+        return false;
+    }
 }
 

@@ -2,7 +2,6 @@ package marodb;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
-import java.lang.ref.Reference;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -17,6 +16,7 @@ import marodb.constraint.FkConstraint;
 import marodb.constraint.PkConstraint;
 import marodb.exceptions.*;
 import marodb.predicate.BooleanExp;
+import marodb.predicate.ThreeValuedLogic;
 import marodb.relation.Column;
 import marodb.relation.Relation;
 import marodb.type.CharType;
@@ -95,6 +95,7 @@ public class MaroDBMS {
 
             // Constraint Validation
             boolean pkAlreadyFound = false;
+            ArrayList<FkConstraint> fkConstraints = new ArrayList<FkConstraint>();
             for (Constraint constraint : fields.second()) {
                 if ( constraint.getType().equals(Constraint.PK) ) {
                     // If duplicate primary constraint definition, raise error
@@ -120,6 +121,7 @@ public class MaroDBMS {
                 } else {
                     // Foreign key constraint
                     FkConstraint fkConstraint = (FkConstraint) constraint;
+                    fkConstraints.add(fkConstraint);
                     String tableName = fkConstraint.getTable();
                     TableSchema table = findTable(tableName);
                     // Referencing table doesn't exists, raise error
@@ -165,12 +167,17 @@ public class MaroDBMS {
             // All constraints satisfied, create new table
             DatabaseEntry tables = new DatabaseEntry(TABLES.getBytes("UTF-8"));
             DatabaseEntry newTable = new DatabaseEntry();
-            schemaBinding.objectToEntry(new TableSchema(tablename, schema), newTable);
+            TableSchema tableSchema = new TableSchema(tablename, schema, fkConstraints);
+            schemaBinding.objectToEntry(tableSchema, newTable);
             cursor.put(tables, newTable);
 
             DatabaseEntry tableName = new DatabaseEntry(tablename.getBytes("UTF-8"));
             DatabaseEntry newRelation = new DatabaseEntry();
-            relationBinding.objectToEntry(new Relation(), newRelation);
+            ArrayList<Column> relationSchema = new ArrayList<Column>();
+            for (String column : tableSchema.getColumns()) {
+                relationSchema.add(new Column(tablename, column));
+            }
+            relationBinding.objectToEntry(new Relation(tablename, relationSchema), newRelation);
             cursor.put(tableName, newRelation);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -238,7 +245,11 @@ public class MaroDBMS {
                 if (!(relationBinding.entryToObject(foundData) instanceof Relation)) {
                     continue;
                 }
-                cursor.delete();
+                Relation foundRelation = (Relation) relationBinding.entryToObject(foundData);
+                if (foundRelation.getName().equals(tableName)) {
+                    cursor.delete();
+                    break;
+                }
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -291,7 +302,9 @@ public class MaroDBMS {
                     continue;
                 }
                 Relation foundRelation = (Relation) relationBinding.entryToObject(foundData);
-                return foundRelation;
+                if (foundRelation.getName().equals(tableName)) {
+                    return foundRelation;
+                }
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -351,23 +364,33 @@ public class MaroDBMS {
      */
     public void select(Pair<ArrayList<Column>, ArrayList<String>> selectList,
                        ArrayList<Pair<String, String>> from, BooleanExp where) {
-        if (selectList == null) {
-            // selct * ...
-
+        // Start joining from first table
+        Relation r = findRelation(from.get(0).first());
+        if (r == null) {
+            // If table doesn't exists
+            throw new SelectTableExistencError(from.get(0).first());
         }
-        else {
+        Relation result = r.renameTable(from.get(0).second());
+        for (int tableIndex = 1; tableIndex < from.size(); tableIndex++) {
+            Relation fromRelation = findRelation(from.get(tableIndex).first());
+            if (fromRelation == null) {
+                throw new SelectTableExistencError(from.get(0).first());
+            }
+            result = result.join(fromRelation.renameTable(from.get(tableIndex).second()));
+        }
+        if (where != null) {
+            result = result.select(where);
+        }
+        if (selectList != null) {
             ArrayList<Column> columnList = selectList.first();
             ArrayList<String> asList     = selectList.second();
-            for (Pair<String, String> refTable : from) {
-                String tableName = refTable.first();
-                Relation relation = findRelation(tableName);
-                relation.pprint();
-            }
+            result = result.renameColumn(columnList, asList);
         }
+        result.pprint();
     }
 
     /**
-     *
+     * Process insert query
      * @param table
      * @param columnNameList    nullable
      * @param valueList
@@ -376,28 +399,26 @@ public class MaroDBMS {
     public void insert(String table, ArrayList<String> columnNameList, ArrayList<Value> valueList) throws InsertionError {
         TableSchema tableSchema = findTable(table);
         if (tableSchema == null) {
+            // If table doesn't exists
             throw new NoSuchTable();
         }
 
         if (columnNameList == null) {
+            // If there is no explicit column list, create from table schema
             columnNameList = new ArrayList<String>();
             for (String column : tableSchema.getFields().keySet()) {
                 columnNameList.add(column);
             }
         }
         if (columnNameList.size() != valueList.size()) {
+            // If number of column and value doesn't match
             throw new InsertTypeMismatchError();
         }
         int index = 0;
-        boolean hasNull = false;
-        for (Value v : valueList) {
-            if (v.getType().getType().equals(DataType.NULLTYPE)) {
-                hasNull = true;
-                break;
-            }
-        }
-
+        boolean pkDuplicate = true;
+        boolean hasPk = false;
         LinkedHashMap<Column, Value> record = new LinkedHashMap<Column, Value>();
+        Relation relation = findRelation(table);
         for (String column : columnNameList) {
             Value v = valueList.get(index);
             if (!tableSchema.getFields().containsKey(column)) {
@@ -413,12 +434,11 @@ public class MaroDBMS {
                 throw new InsertColumnNonNullableError(column);
             }
 
-            if (!hasNull && field.getFkList() != null) {
-                for (Pair<String, String> fk : field.getFkList()) {
-                    String fkTable = fk.first();
-                    String fkColumn = fk.second();
-                    Relation foreignRelation = findRelation(fkTable);
-
+            // primary duplicate check
+            if (field.getPk()) {
+                hasPk = true;
+                if (!relation.hasRecord(column, v)) {
+                    pkDuplicate = false;
                 }
             }
 
@@ -426,10 +446,28 @@ public class MaroDBMS {
             index++;
         }
 
-        Relation relation = findRelation(table);
+        if (hasPk && pkDuplicate) {
+            throw new InsertDuplicatePrimaryKeyError();
+        }
+
+        for (FkConstraint fkConstraint : tableSchema.getFkConstraints()) {
+            boolean hasNull = false;
+            Relation foreignRelation = findRelation(fkConstraint.getTable());
+            for (int fkIndex = 0; fkIndex < fkConstraint.getColumnList().size(); fkIndex++) {
+                Column column = new Column(table, fkConstraint.getColumnList().get(fkIndex));
+                Value v = record.get(column);
+                if (v.getType().getType().equals(DataType.NULLTYPE)) {
+                    hasNull = true;
+                    break;
+                }
+            }
+            if (!hasNull && !foreignRelation.referenceable(table, record, fkConstraint)) {
+                throw new InsertReferentialIntegrityError();
+            }
+        }
+
         relation.addRecord(record);
         updateRelation(table, relation);
-        relation.pprint();
     }
 
     public void updateRelation(String table, Relation relation) {
@@ -443,10 +481,14 @@ public class MaroDBMS {
                 if (!(relationBinding.entryToObject(foundData) instanceof Relation)) {
                     continue;
                 }
-                DatabaseEntry newRelation = new DatabaseEntry();
-                relationBinding.objectToEntry(relation, newRelation);
-                cursor.delete();
-                cursor.put(foundKey, newRelation);
+                Relation foundRelation = (Relation) relationBinding.entryToObject(foundData);
+                if (foundRelation.getName().equals(table)) {
+                    cursor.delete();
+                    DatabaseEntry newRelation = new DatabaseEntry();
+                    relationBinding.objectToEntry(relation, newRelation);
+                    cursor.put(foundKey, newRelation);
+                    break;
+                }
             } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -460,5 +502,77 @@ public class MaroDBMS {
         if (myDatabase != null) myDatabase.close();
         if (classDatabase != null) classDatabase.close();
         if (myDbEnvironment != null) myDbEnvironment.close();
+    }
+
+    public boolean cascade(String tableName, LinkedHashMap<Column, Value> record) {
+        Cursor cursor = myDatabase.openCursor(null, null);
+        ArrayList<Pair<String, Relation>> buffer = new ArrayList<Pair<String, Relation>>();
+
+        try {
+            DatabaseEntry foundKey = new DatabaseEntry(TABLES.getBytes("UTF-8"));
+            DatabaseEntry foundData = new DatabaseEntry();
+
+            cursor.getFirst(foundKey, foundData, LockMode.DEFAULT);
+            if (foundData.getData() == null) {
+                return true;
+            }
+            do {
+                if (!(schemaBinding.entryToObject(foundData) instanceof TableSchema)) {
+                    continue;
+                }
+                TableSchema table = (TableSchema) schemaBinding.entryToObject(foundData);
+                for (FkConstraint fkConstraint : table.getFkConstraints()) {
+                    if (fkConstraint.getTable().equals(tableName)) {
+                        for (String column : fkConstraint.getColumnList()) {
+                            if (!table.getFields().get(column).nullable()) {
+                                return false;
+                            }
+                        }
+                        // Replace with null
+                        Relation r = findRelation(table.getTableName())
+                                .deleteReference(fkConstraint, record);
+                        buffer.add(new Pair<String, Relation>(table.getTableName(), r));
+                    }
+                }
+            } while ( cursor.getNext(foundKey, foundData, LockMode.DEFAULT) == OperationStatus.SUCCESS );
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } finally {
+            cursor.close();
+        }
+        for (Pair<String, Relation> p : buffer) {
+            String t = p.first();
+            Relation r = p.second();
+            updateRelation(t, r);
+        }
+        return true;
+    }
+
+    public void delete(String table, BooleanExp where) {
+        Relation relation = findRelation(table);
+        Relation result = new Relation(table, relation.getSchema());
+        if (relation == null) {
+            throw new NoSuchTable();
+        }
+        int deletedCount = 0, deleteFailCount = 0;
+        for (LinkedHashMap<Column, Value> record : relation.getInstance()) {
+            if (where == null || where.eval(record).equals(new ThreeValuedLogic("TRUE"))) {
+                if (cascade(table, record)) {
+                    deletedCount++;
+                }
+                else {
+                    deleteFailCount++;
+                    result.addRecord(record);
+                }
+            }
+            else {
+                result.addRecord(record);
+            }
+        }
+        updateRelation(table, result);
+        System.out.println(String.valueOf(deletedCount) + " row(s) are deleted");
+        if (deleteFailCount > 0) {
+            System.out.println(String.valueOf(deleteFailCount) + " row(s) are not deleted due to referential integrity");
+        }
     }
 }

@@ -3,6 +3,7 @@
  */
 package marodb;
 
+import marodb.constraint.FkConstraint;
 import marodb.exceptions.*;
 
 import java.io.Serializable;
@@ -12,20 +13,34 @@ import java.util.LinkedHashMap;
 import java.util.Set;
 
 public class TableSchema implements Serializable {
-    private String tableName;
-    private LinkedHashMap<String, Field> fields;
+    private final String tableName;
+    private final LinkedHashMap<String, Field> fields;
+    private final ArrayList<FkConstraint> fkConstraints;
 
-    public TableSchema(String tableName, LinkedHashMap<String, Field> fields) {
+    public TableSchema(String tableName, LinkedHashMap<String, Field> fields, ArrayList<FkConstraint> fkConstraints) {
         this.tableName = tableName;
         this.fields = fields;
+        this.fkConstraints = fkConstraints;
+    }
+
+    public final ArrayList<FkConstraint> getFkConstraints() {
+        return fkConstraints;
     }
 
     public final String getTableName() {
         return tableName;
     }
 
-    public LinkedHashMap<String, marodb.Field> getFields() {
+    public final LinkedHashMap<String, marodb.Field> getFields() {
         return fields;
+    }
+
+    public ArrayList<String> getColumns() {
+        ArrayList<String> columns = new ArrayList<String>();
+        for (String column : fields.keySet()) {
+            columns.add(column);
+        }
+        return columns;
     }
 
     public int pkCount() {

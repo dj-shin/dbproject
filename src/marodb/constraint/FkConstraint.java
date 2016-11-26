@@ -1,11 +1,12 @@
 package marodb.constraint;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 
 /**
  * Created by LastOne on 2016-10-31.
  */
-public class FkConstraint implements Constraint {
+public class FkConstraint implements Constraint, Serializable {
     private ArrayList<String> columnList;
     private String table;
     private ArrayList<String> referenceList;

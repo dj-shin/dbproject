@@ -10,4 +10,7 @@ public interface Value extends Serializable {
 
     @Override
     String toString();
+
+    @Override
+    boolean equals(Object other);
 }

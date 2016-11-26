@@ -31,12 +31,19 @@ public class Column implements Serializable {
         return columnName.hashCode();
     }
 
+    public String getColumn() {
+        return columnName;
+    }
+
+    public String getTable() {
+        return tableName;
+    }
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Column) {
             Column other = (Column) obj;
-            if ((tableName == other.tableName || tableName == null || other.tableName == null)
-                    && columnName == other.columnName) {
+            if ((tableName == null || other.tableName == null || tableName.equals(other.tableName))
+                    && columnName.equals(other.columnName)) {
                 return true;
             }
         }
