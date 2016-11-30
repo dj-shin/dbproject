@@ -5,6 +5,7 @@ package marodb;
 
 import marodb.constraint.FkConstraint;
 import marodb.exceptions.*;
+import marodb.util.Pair;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -68,6 +69,15 @@ public class TableSchema implements Serializable {
                 throw new ReferenceNonPrimaryKeyError();
             }
         }
+    }
+
+    public boolean hasNotNull(ArrayList<String> columnList) {
+        for (String columnName : columnList) {
+            if (!fields.get(columnName).nullable()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String toString() {

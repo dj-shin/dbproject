@@ -8,7 +8,7 @@ public class CharType implements DataType {
 
     @Override
     public String getType() {
-        return CHARTYPE + "(" + length.toString() + ")";
+        return CHARTYPE;
     }
 
     public Integer getLength() {

@@ -38,8 +38,8 @@ public class ThreeValuedLogic {
         if (value == TRUE || other.value == TRUE) {
             return new ThreeValuedLogic("TRUE");
         }
-        else if (value == FALSE && other.value == TRUE) {
-            return new ThreeValuedLogic("TRUE");
+        else if (value == FALSE && other.value == FALSE) {
+            return new ThreeValuedLogic("FALSE");
         }
         else {
             return new ThreeValuedLogic("UNKNOWN");
@@ -67,6 +67,19 @@ public class ThreeValuedLogic {
         }
         else {
             return new ThreeValuedLogic("UNKNOWN");
+        }
+    }
+
+    @Override
+    public String toString() {
+        if (value == TRUE) {
+            return "TRUE";
+        }
+        else if (value == FALSE) {
+            return "FALSE";
+        }
+        else {
+            return "UNKNOWN";
         }
     }
 }

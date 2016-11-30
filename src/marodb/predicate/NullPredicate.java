@@ -16,6 +16,11 @@ public class NullPredicate implements Predicate {
     private Column column;
     private boolean isNull;
 
+    /**
+     * Is null predicate
+     * @param column
+     * @param isNull
+     */
     public NullPredicate(Column column, boolean isNull) {
         this.column = column;
         this.isNull = isNull;
@@ -26,6 +31,11 @@ public class NullPredicate implements Predicate {
         return column.toString() + " is " + (isNull ? "null" : "not null");
     }
 
+    /**
+     * Evaluate predicate on given record
+     * @param record
+     * @return
+     */
     public ThreeValuedLogic eval(LinkedHashMap<Column, Value> record) {
         int numMatchColumn = 0;
         Column matchColumn = null;

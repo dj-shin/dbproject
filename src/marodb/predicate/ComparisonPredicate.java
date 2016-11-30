@@ -13,6 +13,12 @@ public class ComparisonPredicate implements Predicate {
     private final CompareOperand a, b;
     private final CompareOperation op;
 
+    /**
+     * Comparison predicate
+     * @param a
+     * @param b
+     * @param op
+     */
     public ComparisonPredicate(CompareOperand a, CompareOperand b, CompareOperation op) {
         this.a = a;
         this.b = b;
@@ -24,6 +30,11 @@ public class ComparisonPredicate implements Predicate {
         return a.toString() + " " + op.toString() + " " + b.toString();
     }
 
+    /**
+     * Evaluate comparison predicate on record
+     * @param record
+     * @return
+     */
     public ThreeValuedLogic eval(LinkedHashMap<Column, Value> record) {
         Value aValue = a.eval(record);
         Value bValue = b.eval(record);

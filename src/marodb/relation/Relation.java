@@ -35,14 +35,28 @@ public class Relation implements Serializable {
         this.schema = schema;
     }
 
+    /**
+     * Add record to relation
+     * @param record
+     */
     public void addRecord(LinkedHashMap<Column, Value> record) {
         instance.add(record);
     }
 
+    /**
+     * Return raw instance
+     * @return
+     */
     public ArrayList<LinkedHashMap<Column, Value>> getInstance() {
         return instance;
     }
 
+    /**
+     * Project relation with renamed columns
+     * @param columnList
+     * @param asList
+     * @return
+     */
     public Relation projectionAs(ArrayList<Column> columnList, ArrayList<String> asList) {
         ArrayList<Column> newSchema = new ArrayList<Column>();
         int index = 0;
@@ -73,6 +87,12 @@ public class Relation implements Serializable {
         return result;
     }
 
+    /**
+     * Identify column name and returns with table name
+     * raise exception if not found or ambiguous
+     * @param columnName
+     * @return
+     */
     public Column identifyColumn(String columnName) {
         Column matchColumn = null;
         for (Column column : schema) {
@@ -134,6 +154,14 @@ public class Relation implements Serializable {
         ArrayList<Column> selectSchema = new ArrayList<Column>(schema);
         Relation result = new Relation(selectSchema);
 
+        if (instance.size() == 0) {
+            LinkedHashMap<Column, Value> record = new LinkedHashMap<Column, Value>();
+            for (Column column: schema) {
+                record.put(column, new NullValue());
+            }
+            predicate.eval(record);
+        }
+
         for (LinkedHashMap<Column, Value> record : instance) {
             if (predicate.eval(record).equals(new ThreeValuedLogic("TRUE"))) {
                 result.addRecord(record);
@@ -142,20 +170,39 @@ public class Relation implements Serializable {
         return result;
     }
 
-    public boolean hasRecord(String table, String columnString, Value value) {
-        Column column = new Column(table, columnString);
+    public boolean isDuplicatePk(LinkedHashMap<Column, Value> pk) {
+        if (pk.keySet().size() == 0) {
+            return false;
+        }
         for (LinkedHashMap<Column, Value> record : instance) {
-            if (record.get(column).equals(value)) {
+            boolean allSame = true;
+            for (Column column : pk.keySet()) {
+                if (!record.get(column).equals(pk.get(column))) {
+                    allSame = false;
+                    break;
+                }
+            }
+            if (allSame) {
                 return true;
             }
         }
         return false;
     }
 
-    public boolean hasRecord(String columnString, Value value) {
-        Column column = new Column(name, columnString);
-        for (LinkedHashMap<Column, Value> record : instance) {
-            if (record.get(column).equals(value)) {
+    public boolean hasReferencingRecord(LinkedHashMap<Column, Value> record, FkConstraint fkConstraint) {
+        for (LinkedHashMap<Column, Value> r: instance ) {
+            boolean same = true;
+            int index = 0;
+            for (String columnName : fkConstraint.getReferenceList()) {
+                Column refColumn = new Column(name, fkConstraint.getColumnList().get(index));
+                Column column = new Column(fkConstraint.getTable(), columnName);
+                if (!r.get(refColumn).equals(record.get(column))) {
+                    same = false;
+                    break;
+                }
+                index++;
+            }
+            if (same) {
                 return true;
             }
         }
@@ -248,12 +295,12 @@ public class Relation implements Serializable {
 
         ArrayList<Integer> width = new ArrayList<Integer>();
         int i = 0;
-        for (Column column : instance.get(0).keySet()) {
+        for (Column column : schema) {
             width.add(column.toString().length() + 2);
         }
         for (i = 0; i < instance.size(); i++) {
             int j = 0;
-            for (Column column : instance.get(i).keySet()) {
+            for (Column column : schema) {
                 if (width.get(j) < instance.get(i).get(column).toString().length() + 2) {
                     width.set(j, instance.get(i).get(column).toString().length() + 2);
                 }
@@ -269,7 +316,7 @@ public class Relation implements Serializable {
         }
         System.out.println("+");
         i = 0;
-        for (Column column : instance.get(0).keySet()) {
+        for (Column column : schema) {
             System.out.print("| ");
             System.out.print(column.toString());
             for (int j = column.toString().length() + 1; j < width.get(i); j++) {

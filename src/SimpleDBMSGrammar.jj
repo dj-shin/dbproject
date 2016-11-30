@@ -39,6 +39,7 @@ import marodb.exceptions.QueryError;
 import marodb.exceptions.SchemaError;
 import marodb.exceptions.InsertionError;
 import marodb.exceptions.SelectionError;
+import marodb.exceptions.WhereError;
 import java.util.ArrayList;
 
 public class SimpleDBMSParser {
@@ -63,10 +64,8 @@ public class SimpleDBMSParser {
         parser.command();
       }
       catch (Throwable e) {
-        System.out.println("Error : " + e.getMessage());
-        throw e;
-        // printMessage(PRINT_SYNTAX_ERROR);
-        // SimpleDBMSParser.ReInit(System.in);
+        printMessage(PRINT_SYNTAX_ERROR);
+        SimpleDBMSParser.ReInit(System.in);
       }
     }
   }
@@ -332,7 +331,7 @@ void dropTable() : {
       System.out.println("Drop table has failed: " + qe.getMessage());
       return;
     }
-    System.out.println("'" + tablename + "' is dropped");
+    System.out.println("'" + tablename + "' table is dropped");
   }
 }
 
@@ -363,6 +362,14 @@ void selectQuery() : {
     }
     catch ( SelectionError se ) {
       System.out.println("Selection has failed: " + se.getMessage());
+    }
+    catch ( WhereError we ) {
+      System.out.println(we.getMessage());
+      return;
+    }
+    catch ( QueryError qe ) {
+      System.out.println(qe.getMessage());
+      return;
     }
   }
 }
@@ -474,11 +481,11 @@ BooleanTerm booleanTerm() : {
 
 /// @brief Collect "not" connected terms
 BooleanTest booleanFactor() : {
-  boolean not = false;
+  boolean flip = false;
   BooleanTest btest;
 } {
-  (<NOT> { not = true; } ) ? btest = booleanTest()
-  { btest.setNot(not); return btest; }
+  (<NOT> { flip = true; } ) ? btest = booleanTest()
+  { btest.flipNot(flip); return btest; }
 }
 
 /// @brief  Parse expression which returns boolean value
@@ -595,6 +602,10 @@ void deleteQuery() : {
     catch (QueryError qe) {
       System.out.println(qe.getMessage());
     }
+    catch ( WhereError we ) {
+      System.out.println(we.getMessage());
+      return;
+    }
   }
 }
 
@@ -616,6 +627,14 @@ void insertQuery() : {
     }
     catch ( InsertionError ie ) {
       System.out.println("Insertion has failed: " + ie.getMessage());
+      return;
+    }
+    catch ( WhereError we ) {
+      System.out.println(we.getMessage());
+      return;
+    }
+    catch ( QueryError qe ) {
+      System.out.println(qe.getMessage());
       return;
     }
     System.out.println("The row is inserted");
